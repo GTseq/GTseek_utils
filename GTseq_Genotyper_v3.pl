@@ -5,9 +5,10 @@
 #Requires .csv file of [Locus Name,Allele1,Allele2,ProbeSeq1,ProbeSeq2,FWD_Primer,A1_correction,A2_correction] for all loci as $ARGV[0] and an individual fastq file.
 #Correction values for input file are optional.  If correction values are not used, then allele correction values will be zero at all loci.
 #Output files contain a header line with summary information followed by locus specific data.  Locus specific output fields are 
-# LocusName, Allele1_counts, Allele2_counts, A1/A2-ratio, Genotype, Genotype_Class, A1_correction value, A2_correction value, On_target reads, Locus OT_percentage, Locus On-target reads as percentage of total on-target reads
+# LocusName, Allele1_counts, Allele2_counts, A1/A2-ratio, %A2_counts, Genotype, Genotype_Class, A1_correction value, A2_correction value, On_target reads, Locus OT_percentage, Locus On-target reads as percentage of total on-target reads
 # The penultimate field is defined as: #reads beginning with forward primer sequence and containing a probe sequence / #All reads beginning with forward primer sequence *100
 # The final field is defined as: total number of on-target reads for locus / Overall on-target reads in panel *100
+# This version has changed the genotype calling to use the percentage of allele2 counts to call genotypes rather than allele ratios to make the cutoffs easier to understand
 # This version also outputs the IFI score (Individual fuzziness index) for each individual sample.  This is a measure of DNA cross contamination and is calculated
 # using read counts from background signal at homozygous and No-Call loci.  Low scores are better than high scores.
 # version 3 update: Includes fuzzy matching for detection of possible null alleles.  Requires the String::Approx perl extension.
@@ -196,18 +197,29 @@ foreach my $loci (sort keys %F_Primer){
 	if ($Allele2_Count{$loci} == 0) {$A2fix = 0.1}
 	else {$A2fix = $Allele2_Count{$loci}}
 	my $ratio = $A1fix/$A2fix;
+	my $per_A2 = $A2fix/($A1fix + $A2fix)*100;
+	$per_A2 = sprintf("%.2f", $per_A2);
 	$ratio = sprintf("%.3f", $ratio);
 
+#Use %A2 to call genotypes rather than allele ratio to make the cutoffs easier to understand...
+
 	if ($Allele1_Count{$loci} + $Allele2_Count{$loci} < 10) {$geno = "00"; $genoclass = "NA";} #Set genotypes of low allele count loci to "00"
-	elsif ($ratio >= 10) {$geno = "$allele1name{$loci}$allele1name{$loci}"; $genoclass = "A1HOM"; #Allele1 Homozygotes
+	elsif ($per_A2 <= 10) {$geno = "$allele1name{$loci}$allele1name{$loci}"; $genoclass = "A1HOM"; #Allele1 Homozygotes
+	#elsif ($ratio >= 10) {$geno = "$allele1name{$loci}$allele1name{$loci}"; $genoclass = "A1HOM"; #Allele1 Homozygotes
 		$HOM_CT = $HOM_CT + $Allele1_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele2_Count{$loci};} 
-	elsif (($ratio < 10) && ($ratio > 5)) {$geno = "00"; $genoclass = "NA"; #In-betweeners
+	elsif (($per_A2 > 10) && ($per_A2 < 30)) {$geno = "00"; $genoclass = "NA"; #In-betweeners
+	#elsif (($ratio < 10) && ($ratio > 5)) {$geno = "00"; $genoclass = "NA"; #In-betweeners
 		$HOM_CT = $HOM_CT + $Allele1_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele2_Count{$loci};}
-	elsif ($ratio <= 0.1) {$geno = "$allele2name{$loci}$allele2name{$loci}"; $genoclass = "A2HOM"; #Allele2 Homozygotes
-		$HOM_CT = $HOM_CT + $Allele2_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele1_Count{$loci};} 
-	elsif ($ratio <= 0.5) {$geno = "00"; $genoclass = "NA"; #In-betweeners
+	elsif (($per_A2 >= 30) && ($per_A2 <= 70)) {$geno = "$allele1name{$loci}$allele2name{$loci}"; $genoclass = "HET";} #Heterozygotes
+	elsif (($per_A2 > 70) && ($per_A2 < 90)) {$geno = "00"; $genoclass = "NA"; #In-betweeners
 		$HOM_CT = $HOM_CT + $Allele2_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele1_Count{$loci};}
-	elsif ($ratio <= 2) {$geno = "$allele1name{$loci}$allele2name{$loci}"; $genoclass = "HET";} #Heterozygotes
+	#elsif ($ratio <= 0.1) {$geno = "$allele2name{$loci}$allele2name{$loci}"; $genoclass = "A2HOM"; #Allele2 Homozygotes
+		#$HOM_CT = $HOM_CT + $Allele2_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele1_Count{$loci};} 
+	elsif ($per_A2 >= 90) {$geno = "$allele2name{$loci}$allele2name{$loci}"; $genoclass = "A2HOM"; #Allele2 Homozygotes
+		$HOM_CT = $HOM_CT + $Allele2_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele1_Count{$loci};}
+	#elsif ($ratio <= 0.5) {$geno = "00"; $genoclass = "NA"; #In-betweeners
+	#	$HOM_CT = $HOM_CT + $Allele2_Count{$loci}; $BKGRD_CT = $BKGRD_CT + $Allele1_Count{$loci};}
+	#elsif ($ratio <= 2) {$geno = "$allele1name{$loci}$allele2name{$loci}"; $genoclass = "HET";} #Heterozygotes
 	
 #Calculate the presence of possible null alleles using fuzzy match ratio...
 	
@@ -220,7 +232,7 @@ foreach my $loci (sort keys %F_Primer){
 	my $Per_of_AllOTreads = $On_Target{$loci}/$OT_Reads * 100;
 	$On_Target_Per = sprintf("%.1f", $On_Target_Per);
 	$Per_of_AllOTreads = sprintf("%.3f", $Per_of_AllOTreads);
-	$print_line{$loci} = "$loci,$allele1name{$loci}=$Allele1_Count{$loci},$allele2name{$loci}=$Allele2_Count{$loci},$ratio,$geno,$genoclass,$A1_corr{$loci},$A2_corr{$loci},$On_Target{$loci},$On_Target_Per,$Per_of_AllOTreads,$Null_Error{$loci},$fuzzy_match{$loci}";
+	$print_line{$loci} = "$loci,$allele1name{$loci}=$Allele1_Count{$loci},$allele2name{$loci}=$Allele2_Count{$loci},$ratio,$per_A2,$geno,$genoclass,$A1_corr{$loci},$A2_corr{$loci},$On_Target{$loci},$On_Target_Per,$Per_of_AllOTreads,$Null_Error{$loci},$fuzzy_match{$loci}";
 		}
 		
 if ($HOM_CT == 0) {$HOM_CT = 1}

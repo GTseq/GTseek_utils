@@ -50,8 +50,8 @@ for line in f:
   StDEV_Dict[stuff[0]] = float(0)
   OTP_Dict[stuff[0]] = float(0)
   StDEV2_Dict[stuff[0]] = float(0)
-  A1_corr_Dict[stuff[0]] = float(stuff[6])
-  A2_corr_Dict[stuff[0]] = float(stuff[7])
+  A1_corr_Dict[stuff[0]] = float(stuff[7])
+  A2_corr_Dict[stuff[0]] = float(stuff[8])
 
 f.close()
 
@@ -90,8 +90,8 @@ for genos in flist:
   info = line.split(',')
   for loci in assaylist:
    if loci in info[0] and len(info[0]) == len(loci):
-    OT_Dict[info[0]] = OT_Dict[info[0]] + float(info[10])
-    OTP_Dict[info[0]] = OTP_Dict[info[0]] + float(info[9])
+    OT_Dict[info[0]] = OT_Dict[info[0]] + float(info[11])
+    OTP_Dict[info[0]] = OTP_Dict[info[0]] + float(info[10])
     # x list, y list, and color list here...
     x_info = info[1].split("=")
     y_info = info[2].split("=")
@@ -119,8 +119,8 @@ for loci in assaylist:
   for line in g:
    info = line.split(',')
    if loci in info[0] and len(info[0]) == len(loci):
-    variance = (float(info[10]) - OT_Dict[loci])**2
-    variance2 = (float(info[9]) - OTP_Dict[loci])**2
+    variance = (float(info[11]) - OT_Dict[loci])**2
+    variance2 = (float(info[10]) - OTP_Dict[loci])**2
     StDEV_Dict[loci] = StDEV_Dict[loci] + variance
     StDEV2_Dict[loci] = StDEV2_Dict[loci] + variance2
     
@@ -246,7 +246,7 @@ for genos in flist:
    aveOTP = aveOTP + float(OTParr[1])
   elif lineNo2 > 1:
    info2 = line.split(',')
-   if 'NA' in info2[5]:
+   if 'NA' in info2[6]:
     NA = NA + 1
  if rawreads > xmax:
   xmax = rawreads

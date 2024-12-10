@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-#GenoCompile_v4.pl 
+#GenoCompile_v3.2.pl 
 # by Nate Campbell
 #Compile genotypes from individual genotype files from GTseq_Genotyper_v3 output ".genos" files...
 #This version utilizes the expanded output from the GTseq_Genotyper_v3 script to gather summary data and does not
@@ -10,6 +10,7 @@
 # example: $ GTseq_GenoCompile_v3.pl S 90 (outputs SNP genotypes for individual .genos files with 90% or higher genotyping percentage)
 # genotypes for individuals with less than the threshold genotyping percentage are converted to "00".
 # This version will also output allele counts per sample per locus if argument "A" is passed as $ARGV[0]...
+# for 2 column Rubias format, use "R" as $ARGV[0]...
 
 use strict; use warnings;
 
@@ -21,14 +22,20 @@ if (@ARGV == 2) {$flag = $ARGV[0]; $geno_thresh = $ARGV[1];}
 
 my @Files = `ls *genos`;
 chomp ( @Files );
-print "Sample,Raw Reads,On-Target Reads,\%On-Target,\%GT,IFI";
+if ($ARGV[0] eq "R") {
+	print "Sample_Type,Repunit,Collection,Indiv,Raw_Reads,On-Target_Reads,\%On-Target,\%Called_Genotypes,IFI";
+	}
+else {
+	print "Sample,Raw Reads,On-Target Reads,\%On-Target,\%GT,IFI";
+	}
 
 open (FILE1, "<$Files[0]") or die;
 	while (<FILE1>) {
 		if ($. > 1){
 			my @info1 = split ",", $_;
 			my $assay1 = $info1[0];
-			print ",$assay1";
+			if (($ARGV[0] eq "R") or ($ARGV[0] eq "NG")) {print ",$assay1\_1,$assay1\_2";}
+			else {print ",$assay1";}
 			}
 		}
 close FILE1;
@@ -43,17 +50,21 @@ foreach my $samples (@Files) {
 	my $IFI = 0;
 	my $sample_name = $samples;
 	$sample_name =~ s/.genos//;
-	print "$sample_name,";
+	#print "$sample_name,";
 	open (FILE, "<$samples") or die;
 	while (<FILE>) {
-	if ($. == 1) {chomp; my @summary = split ",", $_; $summary[1] =~ s/Raw-Reads\://; print "$summary[1]"; $raw = $summary[1];
-		$IFI = $summary[4]; $IFI =~ s/IFI_score\://;}
+	if ($. == 1) {chomp; my @summary = split ",", 
+		$_; $summary[1] =~ s/Raw-Reads\://; 
+		#print "$summary[1]"; 
+		$raw = $summary[1];
+		$IFI = $summary[4]; 
+		$IFI =~ s/IFI_score\://;}
 	elsif ($. > 1) {
 		$num_targets++;
 		chomp;
 		my @info = split ",", $_;
 		my $assay = $info[0];
-		my $geno = $info[4];
+		my $geno = $info[5];
 		if ($geno =~ m/NA|00/) {$GT_pct++}
 		my $count1 = $info[1];
 		$count1 =~ s/.*=//;
@@ -67,14 +78,24 @@ foreach my $samples (@Files) {
 		my $OT_pct = $on_target/$raw*100;
 		my $Print_GT_pct = sprintf("%.2f", $GT_pct);
 		$OT_pct = sprintf("%.2f", $OT_pct);
-		print ",$on_target,$OT_pct,$Print_GT_pct,$IFI";
+		#print ",$on_target,$OT_pct,$Print_GT_pct,$IFI";
+		
+	if (($GT_pct >= $geno_thresh) && ($ARGV[0] ne "R")) {
+		print "$sample_name,$raw,$on_target,$OT_pct,$Print_GT_pct,$IFI";
+		}
+	elsif (($GT_pct >= $geno_thresh) && ($ARGV[0] eq "R")) {
+		print "mixture,NA,NA,$sample_name,$raw,$on_target,$OT_pct,$Print_GT_pct,$IFI";
+		}
 		
 	open (FILE, "<$samples") or die;
 	while (<FILE>) {
 		if ($. > 1) {
 			chomp;
 			my @info1 = split ",", $_;
-			my $geno = $info1[4];
+			my $geno = $info1[5];
+			my $n_geno = $geno;
+			$n_geno =~ tr/ACGT0/12340/;
+			my @bcalls = split "", $n_geno;
 			my $L_count = 0;
 			$info1[1] =~ s/.*=//;
 			$info1[2] =~ s/.*=//;
@@ -82,18 +103,32 @@ foreach my $samples (@Files) {
 			my $a2_ct = $info1[2];
 			$L_count = $info1[1] + $info1[2];
 			my $NumGT = "00";
-			if($info1[5] =~ m/A1HOM/) {$NumGT = "11";}
-			elsif($info1[5] =~ m/HET/) {$NumGT = "12";}
-			elsif($info1[5] =~ m/A2HOM/) {$NumGT = "22";}
-			elsif($info1[5] =~ m/NA/) {$NumGT = "00";}
+			if($info1[6] =~ m/A1HOM/) {$NumGT = "11";}
+			elsif($info1[6] =~ m/HET/) {$NumGT = "12";}
+			elsif($info1[6] =~ m/A2HOM/) {$NumGT = "22";}
+			elsif($info1[6] =~ m/NA/) {$NumGT = "00";}
 		
 			if(($flag =~ m/S/) && ($GT_pct >= $geno_thresh)) {print ",$geno";}
 			elsif(($flag =~ m/C/) && ($GT_pct >= $geno_thresh)) {print ",$L_count";}
 			elsif(($flag =~ m/N/) && ($GT_pct >= $geno_thresh)) {print ",$NumGT";}
 			elsif (($flag eq "A") && ($GT_pct >= $geno_thresh)) {print ",$a1_ct\/$a2_ct";}
-			else {print ",00";}
+			elsif (($flag eq "NG") && ($GT_pct >= $geno_thresh)) {print ",$bcalls[0],$bcalls[1]";}
+			elsif (($flag eq "R") && ($GT_pct >= $geno_thresh)) {
+				my @num_alleles = split "", $NumGT;
+				if ($num_alleles[0] == 0) {
+					$num_alleles[0] = "NA";
+					$num_alleles[1] = "NA";
+					}
+				print ",$num_alleles[0],$num_alleles[1]";
+				}			
+			#else {print ",00";}
 			}
 		}
-		print "\n"; 
+		if (($GT_pct >= $geno_thresh) && ($ARGV[0] eq "R")) {
+			print "\n";
+			}
+		elsif (($GT_pct >= $geno_thresh) && ($ARGV[0] ne "R")) {
+			print "\n";
+			}
 		close FILE;
 	}
